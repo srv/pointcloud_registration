@@ -1,0 +1,21 @@
+<launch>
+
+	<node name="icp_registration" pkg="pointcloud_registration" type="pairwise_incremental_registration_node" output="screen">
+		<param name="subscribe_pointcloud_topic" value="/pcd_publisher/output" />
+		<param name="downsample_pointcloud_after" value="true"/>
+		<param name="max_number_of_iterations_icp" value="50"/>
+		<param name="epsilon_transformation" value="1e-6"/>
+		<param name="euclidean_fitness_epsilon" value="0.8"/>
+		<param name="max_correspondence_distance" value="0.01"/>
+		<param name="downsample_voxel_size" value="0.02"/>
+	</node>
+
+	<node name="pcd_publisher" pkg="pointcloud_tools" type="pcd_publisher" args="$(find pointcloud_registration)/data" output="screen">
+		<param name="timer_period" value="4" />
+	</node>
+
+	<node name="pointcloud_viewer" pkg="pointcloud_tools" type="pointcloud_viewer" launch-prefix="optirun">
+		<remap from="/input" to="/merged_pointcloud"/>
+	</node>
+
+</launch>

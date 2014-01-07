@@ -2,6 +2,7 @@
 #define POINTCLOUD_REGISTRATION_H
 
 #include <ros/ros.h>
+#include <nav_msgs/Odometry.h>
 
 #include <std_msgs/String.h>
 
@@ -30,6 +31,7 @@ protected:
   Eigen::Matrix4f pairAlign(const PointCloudRGB::Ptr cloud_src, const PointCloudRGB::Ptr cloud_tgt);
   void pointCloudCb(const PointCloudRGB::ConstPtr& point_cloud);
   PointCloudRGB::Ptr pointcloudFilter(PointCloudRGB::Ptr cloud, int type);
+  void odometryCb(const nav_msgs::OdometryConstPtr& odom);
 
 private:
   // ROS Node handlers
@@ -38,6 +40,7 @@ private:
 
   // ROS topics
   ros::Subscriber point_cloud_sub_;
+  ros::Subscriber odometry_sub_;
   ros::Publisher  point_cloud_merged_pub_;
 
   // Operational properties
@@ -55,10 +58,14 @@ private:
   Eigen::Matrix4f final_transformation_;
 
   // Registration parameters
+  std::string registration_method_;
+  bool pairwise_registration_;
   int max_number_of_iterations_;
   double epsilon_transformation_;
-  double nt_step_size_;
+  double ndt_step_size_;
   double ndt_grid_resolution_;
+  double icp_max_correspondence_distance_;
+  double icp_euclidean_fitness_epsilon_;
 
   // Filtering properties
   bool input_filtering_;
@@ -87,6 +94,11 @@ private:
   int out_filter_mean_k_;
   double in_filter_std_dev_thresh_;
   double out_filter_std_dev_thresh_;
+
+  // Odometry callback
+  bool use_odometry_;
+  std::string odometry_topic_;
+  Eigen::Matrix4f odometry_matrix_;
 
 };
 

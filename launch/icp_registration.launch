@@ -1,0 +1,21 @@
+<launch>
+
+	<node name="icp_registration" pkg="pointcloud_registration" type="icp_registration_node" output="screen">
+		<remap from="points2" to="/pcd_publisher/output" />
+		<param name="downsample_pointcloud_after" value="true"/>
+		<param name="max_number_of_iterations_icp" value="200"/>
+		<param name="epsilon_transformation" value="1e-6"/>
+		<param name="euclidean_fitness_epsilon" value="1.0"/>
+		<param name="max_correspondence_distance" value="0.05"/>
+		<param name="downsample_voxel_size" value="0.4"/>
+	</node>
+
+	<node name="pcd_publisher" pkg="pointcloud_tools" type="pcd_publisher" args="/home/miquel/data/registration/pcd_bremen" output="screen">
+		<param name="timer_period" value="4" />
+	</node>
+
+	<node name="pointcloud_viewer" pkg="pointcloud_tools" type="pointcloud_viewer">
+		<remap from="/input" to="/merged_pointcloud"/>
+	</node>
+
+</launch>

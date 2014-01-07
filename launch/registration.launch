@@ -1,0 +1,70 @@
+<launch>
+
+	<node name="pointcloud_registration" pkg="pointcloud_registration" type="pointcloud_registration_node" output="screen">
+		<!-- Input topic remapping -->
+		<remap from="input" to="/pcd_publisher/output" />
+		<param name="input_cue" value=""/>
+
+		<!-- Output topic remapping -->
+		<remap from="output" to="/merged_pointcloud"/>
+		
+		<!-- Common parameters -->
+		<param name="max_number_of_iterations" value="500"/>
+		<param name="epsilon_transformation" value="1e-6"/>
+
+		<!-- Registration method to use: 				  -->
+		<!--    * icp : Iterative Closest Point           -->
+		<!--    * ndt : Normal Distribution Transform     -->
+		<param name="registration_method" value="icp"/>
+
+		<!-- Pairwise Registration of Poinclouds     	  -->
+		<!-- rather than matching with the merged PCD 	  -->
+		<param name="pairwise_registration" value="true"/>
+
+		<!-- Normal Dist. Transform -->
+		<param name="ndt_step_size" value="0.05"/>
+		<param name="ndt_grid_resolution" value="0.5"/>
+
+		<!-- ICP -->
+		<param name="icp_max_correspondence_distance" value="0.05"/>
+		<param name="icp_euclidean_fitness_epsilon" value="1.0"/>
+
+		<!-- Input filtering -->
+		<param name="input_filtering" value="false"/>
+		<param name="in_filter_x_min" value="-100"/>
+		<param name="in_filter_x_max" value="100"/>
+		<param name="in_filter_y_min" value="-100"/>
+		<param name="in_filter_y_max" value="100"/>
+		<param name="in_filter_z_min" value="-10"/>
+		<param name="in_filter_z_max" value="10"/>
+		<param name="in_filter_voxel_size" value="0.5"/> <!-- 0.4 i 0.8 -->
+		<param name="in_filter_mean_k" value="50"/>
+		<param name="in_filter_std_dev_thresh" value="1.0"/>
+
+		<!-- Output filtering -->
+		<param name="output_filtering" value="false"/>
+		<param name="out_filter_x_min" value="-100"/>
+		<param name="out_filter_x_max" value="100"/>
+		<param name="out_filter_y_min" value="-100"/>
+		<param name="out_filter_y_max" value="100"/>
+		<param name="out_filter_z_min" value="-10"/>
+		<param name="out_filter_z_max" value="10"/>
+		<param name="out_filter_voxel_size" value="0.5"/>
+		<param name="out_filter_mean_k" value="50"/>
+		<param name="out_filter_std_dev_thresh" value="1.0"/>
+
+		<!-- Odometry estimate for registration -->
+		<param name="use_odometry" value="false"/>
+		<remap from="odom" to="/visual_odometer/odometry" />
+	</node>
+
+	<node name="pcd_publisher" pkg="pointcloud_tools" type="pcd_publisher" args="/home/miquel/data/registration/pcd_bremen" output="screen">
+	<!--node name="pcd_publisher" pkg="pointcloud_tools" type="pcd_publisher" args="$(find pointcloud_registration)/data" output="screen"-->
+		<param name="timer_period" value="4.0" />
+	</node>
+
+	<node name="pointcloud_viewer" pkg="pointcloud_tools" type="pointcloud_viewer" launch-prefix="optirun" output="screen">
+		<remap from="/input" to="/merged_pointcloud"/>
+	</node>
+
+</launch>

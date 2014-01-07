@@ -14,8 +14,8 @@ pointcloud_registration::PointCloudRegistration::
 PointCloudRegistration() : nh_private_("~")
 {
   // Read the parameters from the parameter server (set defaults)
-  nh_private_.param("publish_merged_pointcloud_topic", merged_pointcloud_topic_, std::string("/merged_pointcloud"));
-  nh_private_.param("subscribe_pointcloud_topic", subscribe_pointcloud_topic_, std::string("/points2"));
+  nh_private_.param("publish_merged_pointcloud_topic", merged_pointcloud_topic_, std::string("/output"));
+  nh_private_.param("subscribe_pointcloud_topic", subscribe_pointcloud_topic_, std::string("/input"));
   nh_private_.param("input_cue", input_cue_, 10);
   nh_private_.param("input_filtering", input_filtering_, true);
   nh_private_.param("output_filtering", output_filtering_, true);
@@ -39,8 +39,18 @@ PointCloudRegistration() : nh_private_("~")
   nh_private_.param("out_filter_std_dev_thresh", out_filter_std_dev_thresh_, 1.0);
   nh_private_.param("max_number_of_iterations", max_number_of_iterations_, 30);
   nh_private_.param("epsilon_transformation", epsilon_transformation_, 0.01);
-  nh_private_.param("nt_step_size", nt_step_size_, 0.1);
+  nh_private_.param("ndt_step_size", ndt_step_size_, 0.1);
   nh_private_.param("ndt_grid_resolution", ndt_grid_resolution_, 1.0);
+
+  nh_private_.param("icp_max_correspondence_distance", icp_max_correspondence_distance_, 0.05);
+  nh_private_.param("icp_euclidean_fitness_epsilon", icp_euclidean_fitness_epsilon_, 1.0);
+
+  nh_private_.param("use_odometry", use_odometry_, false);
+  nh_private_.param("odometry_topic", odometry_topic_, std::string("/odom"));
+
+  // icp, ndt
+  nh_private_.param("registration_method", registration_method_, std::string("icp")); 
+  nh_private_.param("pairwise_registration", pairwise_registration_, true); 
 
   // Initialize parameters
   counter_ = 0;
@@ -53,6 +63,21 @@ PointCloudRegistration() : nh_private_("~")
     input_cue_,
     &PointCloudRegistration::pointCloudCb,
     this);
+
+  if(use_odometry_)
+  {
+    // Initialize an empty transformation matrix
+    odometry_matrix_ = Eigen::Matrix4f::Identity();
+    // Subscribe to the odometry topic
+    odometry_sub_ = nh_.subscribe<nav_msgs::Odometry>(
+      odometry_topic_, 
+      1, 
+      &PointCloudRegistration::odometryCb,
+      this,
+      ros::TransportHints());
+  }
+
+
 
   // Declare the point cloud merget topic
   point_cloud_merged_pub_ = nh_private_.advertise<PointCloudRGB>(merged_pointcloud_topic_, 1); 
@@ -83,37 +108,60 @@ pairAlign(const PointCloudRGB::Ptr cloud_src, const PointCloudRGB::Ptr cloud_tgt
   src = cloud_src;
   tgt = cloud_tgt;
   
-  // Initializing Normal Distributions Transform (NDT).
-  pcl17::NormalDistributionsTransform<PointRGB, PointRGB> ndt;
-
-  // Setting scale dependent NDT parameters
-  // Setting minimum transformation difference for termination condition.
-  ndt.setTransformationEpsilon(epsilon_transformation_);
-  // Setting maximum step size for More-Thuente line search.
-  ndt.setStepSize(nt_step_size_);
-  //Setting Resolution of NDT grid structure (VoxelGridCovariance).
-  ndt.setResolution(ndt_grid_resolution_);
-
-  // Setting max number of registration iterations.
-  ndt.setMaximumIterations(max_number_of_iterations_);
-  // Setting point cloud to be aligned.
-  ndt.setInputSource(src);
-  // Setting point cloud to be aligned to.
-  ndt.setInputTarget(tgt);
-
-  // Set initial alignment estimate found using robot odometry.
-  //Eigen::AngleAxisf init_rotation (0.6931, Eigen::Vector3f::UnitZ ());
-  //Eigen::Translation3f init_translation (1.79387, 0.720047, 0);
-  //Eigen::Matrix4f init_guess = (init_translation * init_rotation).matrix ();
-
-  // Calculating required rigid transform to align the input cloud to the target cloud.
   PointCloudRGB::Ptr output_cloud (new PointCloudRGB);
-  //ndt.align (*output_cloud, init_guess);
-  ndt.align (*output_cloud);
 
-  ROS_INFO_STREAM("[PointCloudRegistration:] has converged with score of: " << ndt.getFitnessScore());
+  if(registration_method_ == "icp")
+  {
+    pcl17::IterativeClosestPoint<PointRGB, PointRGB> icp;
+    // Setup the icp algorithm
+    icp.setMaxCorrespondenceDistance(icp_max_correspondence_distance_);
+    icp.setMaximumIterations(max_number_of_iterations_);
+    icp.setTransformationEpsilon(epsilon_transformation_);
+    icp.setEuclideanFitnessEpsilon(icp_euclidean_fitness_epsilon_);
+    icp.setUseReciprocalCorrespondences(true);
 
-  return ndt.getFinalTransformation();
+    // Align point clouds
+    ROS_INFO_STREAM("[PointCloudRegistration:] Aligning...");
+    icp.setInputTarget(src);
+    icp.setInputSource(tgt);
+    icp.align(pointcloud_transformed_);
+
+    ROS_INFO_STREAM("[PointCloudRegistration:] ICP has converged with a score of: " << icp.getFitnessScore());
+    return icp.getFinalTransformation();
+
+  }else if(registration_method_ == "ndt"){
+    // Initializing Normal Distributions Transform (NDT).
+    pcl17::NormalDistributionsTransform<PointRGB, PointRGB> ndt;
+    // Setting scale dependent NDT parameters
+    // Setting minimum transformation difference for termination condition.
+    ndt.setTransformationEpsilon(epsilon_transformation_);
+    // Setting maximum step size for More-Thuente line search.
+    ndt.setStepSize(ndt_step_size_);
+    //Setting Resolution of NDT grid structure (VoxelGridCovariance).
+    ndt.setResolution(ndt_grid_resolution_);
+
+    // Setting max number of registration iterations.
+    ndt.setMaximumIterations(max_number_of_iterations_);
+    // Setting point cloud to be aligned.
+    ndt.setInputSource(src);
+    // Setting point cloud to be aligned to.
+    ndt.setInputTarget(tgt);
+
+    // Calculating required rigid transform to align the input cloud to the target cloud..
+    ROS_INFO_STREAM("[PointCloudRegistration:] Aligning...");
+    if(use_odometry_){
+      // Set initial alignment estimate found using robot odometry.
+      ndt.align (*output_cloud, odometry_matrix_);
+    }else{
+      ndt.align (*output_cloud);
+    }
+    ROS_INFO_STREAM("[PointCloudRegistration:] NDT has converged with score of: " << ndt.getFitnessScore());
+
+    return ndt.getFinalTransformation();
+  }
+
+  ROS_ASSERT("[PointCloudRegistration:] Method not valid");
+  return Eigen::Matrix4f();
 }
 
 /** \brief Point cloud callback
@@ -170,7 +218,10 @@ pointCloudCb(const PointCloudRGB::ConstPtr& point_cloud)
     pointcloud_merged_ += pointcloud_transformed_;
 
     // Update for next callback
-    pointcloud_previous_ = pointcloud_current_;
+    if(pairwise_registration_)
+      pointcloud_previous_ = pointcloud_current_;
+    else
+      pointcloud_previous_ = pointcloud_merged_;
   }
 
   // Filter the merged pointcloud
@@ -273,4 +324,27 @@ pointcloudFilter(PointCloudRGB::Ptr cloud, int type)
   sor.filter(*cloud_outlier_ptr);  
 
   return cloud_outlier_ptr;
+}
+
+/** \brief Point cloud callback
+  * \param point_cloud the input point cloud received
+  */
+void pointcloud_registration::PointCloudRegistration::
+odometryCb(const nav_msgs::OdometryConstPtr& odom)
+{
+  // get the position 
+  double x = odom->pose.pose.position.x;
+  double y = odom->pose.pose.position.y;
+  double z = odom->pose.pose.position.z;
+  // get the orientation
+  double qx = odom->pose.pose.orientation.x;
+  double qy = odom->pose.pose.orientation.y;
+  double qz = odom->pose.pose.orientation.z;
+  double qw = odom->pose.pose.orientation.w;
+  // create Eigen translation vector
+  Eigen::Translation3d t(x,y,z);
+  // create Eigen rotation matrix
+  Eigen::Quaterniond q(qw,qx,qy,qz);
+  // create affine matrix
+  odometry_matrix_ = (t * q).matrix().cast<float>();
 }

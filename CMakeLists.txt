@@ -35,9 +35,18 @@ add_definitions(${EIGEN_DEFINITIONS})
 
 rosbuild_add_executable(pointcloud_registration_node 
 						src/pointcloud_registration_node.cpp 
-						src/pointcloud_registration.cpp
-						src/icp_registration.cpp
-						src/pairwise_incremental_registration.cpp
+						src/pointcloud_registration.cpp)
+
+rosbuild_add_executable(icp_registration_node 
+						src/icp_registration_node.cpp
+						src/icp_registration.cpp)
+
+rosbuild_add_executable(pairwise_incremental_registration_node 
+						src/pairwise_incremental_registration_node.cpp 
+						src/pairwise_incremental_registration.cpp)
+
+rosbuild_add_executable(normal_distribution_registration_node 
+						src/normal_distribution_registration_node.cpp
 						src/normal_distribution_registration.cpp)
 
 rosbuild_link_boost(pointcloud_registration_node system)
